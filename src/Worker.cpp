@@ -65,22 +65,21 @@ bool ljPool::Worker::isRunning() const
 void ljPool::Worker::run()
 {
 	Task func;
-	while (m_running) {
+	while (true) {
 		{
 			std::unique_lock<std::mutex> ulock(m_mutexQueue);
-			while (m_queue.empty()) {
-				auto status = m_cvQueueEmpty.wait_for(ulock, m_timeout);
-				// 如果是超时未收到任务,且当前worker 数量大于核心 worker 数,直接退出当前线程.
-				if (status == std::cv_status::timeout && m_runningWorkerNum > m_coreWorkerNum) {
-					// std::cout << "timeout!!!" << std::endl;
-					// 运行状态修改为停止，等待监控进程回收.
-					m_running.store(false);
-				}
-				// 判断线程池是否停止.平滑停止.
-				if (!m_running) {
-					--m_runningWorkerNum;
-					return;
-				}
+			// 当线程池处于运行态，且队列无任务时需要阻塞,其他情况需要放行（执行任务，或者线程完成）.
+			auto ret = m_cvQueueEmpty.wait_for(ulock, m_timeout, [this]() {
+					return !(m_running && m_queue.empty());
+				});
+			// 如果是超时情况，自动修改线程状态为停止.
+			if (!ret) {
+				m_running.store(false);
+			}
+			// 此处判断是否要退出，且退出时候应该保证投递的任务全部被执行完.
+			if (!m_running && m_queue.empty()) {
+				--m_runningWorkerNum;
+				return;
 			}
 			// 当前 worker 处于忙碌状态.
 			m_busy = true;
