@@ -10,7 +10,7 @@ ljPool::CppPool::CppPool(int maxNum, int minNum, size_t maxQueueSize)
 
 ljPool::CppPool::~CppPool()
 {
-	// std::cout << "Pool has worker num: " << getWorkerNum() << std::endl;
+	// std::cout << "Pool has worker num: " << getWorkerNum() << " task:" << m_queueSource.taskQueue.size() << std::endl;
 	shutdown();
 }
 
@@ -51,7 +51,7 @@ int ljPool::CppPool::createWorker(int num)
 			num = m_maxNum - (int)m_workerList.size();
 		}
 		for (int i = 0; i < num; ++i) {
-			auto wptr = std::make_shared<Worker>(m_queueSource, m_coreNum);
+			auto wptr = std::make_shared<Worker>(m_queueSource, *this, m_coreNum);
 			m_workerList.emplace_back(wptr);
 			wptr->start();
 		}
@@ -64,6 +64,15 @@ size_t ljPool::CppPool::getWorkerNum()
 {
 	std::lock_guard<std::mutex> lock(m_mutexWorkerList);
 	return m_workerList.size();
+}
+
+size_t ljPool::CppPool::getRunningWorkerNum()
+{
+	std::lock_guard<std::mutex> lock(m_mutexWorkerList);
+	return std::count_if(m_workerList.cbegin(), m_workerList.cend(), [](const std::shared_ptr<Worker>& ptr) {
+		// 判断活跃 worker.
+		return ptr->isRunning();
+		});
 }
 
 size_t ljPool::CppPool::getActiveWorkerNum()
@@ -115,7 +124,7 @@ void ljPool::CppPool::recycle()
 	// 跟线程池保持同一个状态.
 	while (m_running)
 	{
-		// std::cout << "checking..." << std::endl;
+		// std::cout << "checking... woker: " << m_workerList.size() << std::endl;
 		// 每秒检测一下是否有需要回收的 worker.
 		std::this_thread::sleep_for(std::chrono::seconds(m_mgrLoopDuration));
 		// 开始检测是否有需要回收的线程.
@@ -124,7 +133,7 @@ void ljPool::CppPool::recycle()
 		while (iter != m_workerList.cend()) {
 			if (!(*iter)->isRunning()) {
 				iter = m_workerList.erase(iter);
-				// std::cout << "回收一次." << std::endl;
+				// std::cout << "recycle a worker." << std::endl;
 			}
 			else {
 				++iter;

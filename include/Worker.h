@@ -5,10 +5,13 @@
 #include <queue>
 #include <functional>
 #include <chrono>
+#include <list>
 
 namespace ljPool {
 
 	struct TaskQueueSource;
+
+	class CppPool;
 
 	class Worker {
 
@@ -16,8 +19,6 @@ namespace ljPool {
 
 		// 记录当前 worker 是否正在运行.
 		std::atomic<bool> m_running;
-
-		static int m_runningWorkerNum;
 
 		// 当前 worker 的线程资源.
 		std::thread m_thread;
@@ -43,9 +44,11 @@ namespace ljPool {
 		// 最大 worker 数量.
 		const int& m_coreWorkerNum;
 
+		CppPool& m_pool;
+
 	public:
 
-		Worker(TaskQueueSource&, const int&, long long = 2000ll);
+		Worker(TaskQueueSource&, CppPool&, const int&, long long = 2000ll);
 
 		~Worker();
 

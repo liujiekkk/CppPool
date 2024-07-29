@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include "TaskQueue.h"
-#include "Worker.h"
 #include <memory>
 #include <future>
 #include <atomic>
@@ -41,7 +40,7 @@ namespace ljPool {
 		
 	public:
 
-		CppPool(int maxNum = 100, int minNum = 5, size_t maxQueueSize = 128);
+		CppPool(int maxNum = 50, int minNum = 5, size_t maxQueueSize = 32);
 
 		virtual ~CppPool();
 
@@ -56,6 +55,9 @@ namespace ljPool {
 
 		// 获取当前 worker 进程数.
 		size_t getWorkerNum();
+
+		// 获取当前处在运行态的 woker 数.
+		size_t getRunningWorkerNum();
 
 		// 获取活跃进程数.
 		size_t getActiveWorkerNum();

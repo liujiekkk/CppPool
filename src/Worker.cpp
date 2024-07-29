@@ -1,13 +1,11 @@
 ﻿#include "Worker.h"
 #include "TaskQueue.h"
-#include <iostream>
+#include "CppPool.h"
 
-int ljPool::Worker::m_runningWorkerNum = 0;
-
-ljPool::Worker::Worker(TaskQueueSource& source, const int& maxNum,long long timeout)
+ljPool::Worker::Worker(TaskQueueSource& source, CppPool& pool, const int& maxNum,long long timeout)
 	: m_running(false), m_thread(), m_queue(source.taskQueue), m_mutexQueue(source.mutexQueue),
 	m_cvQueueEmpty(source.cvQueueEmpty), m_cvQueueFull(source.cvQueueFull), m_busy(false), 
-	m_timeout(timeout), m_coreWorkerNum(maxNum)
+	m_timeout(timeout), m_coreWorkerNum(maxNum), m_pool(pool)
 {
 }
 
@@ -28,8 +26,6 @@ void ljPool::Worker::start()
 	if (!m_running.compare_exchange_weak(expected, true)) {
 		return;
 	}
-	// 运行 worker 数+1.
-	++m_runningWorkerNum;
 	// worker 的工作函数.
 	auto func = [this]() {
 		run();
@@ -68,18 +64,20 @@ void ljPool::Worker::run()
 	while (true) {
 		{
 			std::unique_lock<std::mutex> ulock(m_mutexQueue);
-			// 当线程池处于运行态，且队列无任务时需要阻塞,其他情况需要放行（执行任务，或者线程完成）.
-			auto ret = m_cvQueueEmpty.wait_for(ulock, m_timeout, [this]() {
+			// [woker 队列为空]的时候进入循环（为了防止任务丢失,可能出现running=false，实际队列仍在运行的情况）.
+			while (m_queue.empty()) {
+				// 当线程池处于运行态，且队列无任务时需要阻塞,其他情况需要放行（执行任务，或者线程完成）.
+				auto ret = m_cvQueueEmpty.wait_for(ulock, m_timeout, [this]() {
 					return !(m_running && m_queue.empty());
 				});
-			// 如果是超时情况，自动修改线程状态为停止.
-			if (!ret) {
-				m_running.store(false);
-			}
-			// 此处判断是否要退出，且退出时候应该保证投递的任务全部被执行完.
-			if (!m_running && m_queue.empty()) {
-				--m_runningWorkerNum;
-				return;
+				// 如果是超时情况，自动修改线程状态为停止.（核心线程数判断）
+				if (!ret && m_pool.getRunningWorkerNum() > m_coreWorkerNum) {
+					m_running.store(false);
+				}
+				// 此处判断是否要退出，且退出时候应该保证投递的任务全部被执行完.
+				if (!m_running && m_queue.empty()) {
+					return;
+				}
 			}
 			// 当前 worker 处于忙碌状态.
 			m_busy = true;
