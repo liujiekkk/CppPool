@@ -13,7 +13,7 @@ ljPool::Worker::~Worker()
 {
 	// 停止当前 worker 线程.
 	stop();
-	// 回收当前 worker 线程资源.
+	// 回收当前线程资源.
 	if (m_thread.joinable()) {
 		m_thread.join();
 	}
@@ -42,6 +42,10 @@ void ljPool::Worker::stop()
 	}
 	// 通知所有 worker 线程检测停止状态，完成子线程.
 	m_cvQueueEmpty.notify_all();
+	// 回收当前线程资源（用于用户手动停止进程池，同步回收 worker 线程）.
+	if (m_thread.joinable()) {
+		m_thread.join();
+	}
 }
 
 bool ljPool::Worker::isActive() const
